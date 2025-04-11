@@ -1,18 +1,16 @@
+
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getHBLAssignments } from "@/services/classroomService";
 import { DateRange } from "react-day-picker";
 import { Assignment } from "@/types/Assignment";
-import { DateRangePicker } from "@/components/DateRangePicker";
-import AssignmentCard from "@/components/AssignmentCard";
 import Navbar from "@/components/Navbar";
 import { useAuth } from "@/context/AuthContext";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Search, RefreshCw, FileText, Megaphone } from "lucide-react";
-import { addDays, subDays } from "date-fns";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { subDays } from "date-fns";
 import { useToast } from "@/components/ui/use-toast";
+import DashboardHeader from "@/components/dashboard/DashboardHeader";
+import DashboardFilters from "@/components/dashboard/DashboardFilters";
+import AssignmentList from "@/components/dashboard/AssignmentList";
 
 const Dashboard = () => {
   const { user, isLoading, accessToken } = useAuth();
@@ -130,103 +128,25 @@ const Dashboard = () => {
       
       <main className="flex-1 container py-6 px-4 md:px-6">
         <div className="flex flex-col space-y-4 md:space-y-8">
-          <div className="flex flex-col space-y-2">
-            <h1 className="text-2xl font-bold tracking-tight">HBL Assignments</h1>
-            <p className="text-muted-foreground">
-              Track your Home Based Learning assignments and announcements
-            </p>
-          </div>
+          <DashboardHeader />
           
-          <div className="grid gap-4 md:grid-cols-[1fr_200px]">
-            <div className="relative">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                type="search"
-                placeholder="Search assignments..."
-                className="w-full pl-8"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
-            <DateRangePicker date={dateRange} setDate={setDateRange} />
-          </div>
+          <DashboardFilters
+            searchQuery={searchQuery}
+            setSearchQuery={setSearchQuery}
+            dateRange={dateRange}
+            setDateRange={setDateRange}
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
+            handleRefresh={handleRefresh}
+            setDefaultDateRange={setDefaultDateRange}
+            isLoadingAssignments={isLoadingAssignments}
+          />
           
-          <div className="flex items-center justify-between">
-            <Tabs
-              value={activeTab}
-              onValueChange={setActiveTab}
-              className="w-full md:w-auto"
-            >
-              <TabsList className="grid w-full grid-cols-3">
-                <TabsTrigger value="all">All</TabsTrigger>
-                <TabsTrigger value="assignment" className="flex items-center gap-1">
-                  <FileText className="h-3.5 w-3.5" />
-                  <span>Assignments</span>
-                </TabsTrigger>
-                <TabsTrigger value="announcement" className="flex items-center gap-1">
-                  <Megaphone className="h-3.5 w-3.5" />
-                  <span>Announcements</span>
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
-            
-            <div className="hidden md:flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={setDefaultDateRange}
-                className="hidden md:flex h-8"
-              >
-                Last 2 days
-              </Button>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={handleRefresh}
-                disabled={isLoadingAssignments}
-                className="h-8"
-              >
-                <RefreshCw className={`h-3.5 w-3.5 mr-1 ${isLoadingAssignments ? 'animate-spin' : ''}`} />
-                Refresh
-              </Button>
-            </div>
-          </div>
-          
-          <div>
-            {isLoadingAssignments ? (
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {[1, 2, 3, 4, 5, 6].map((i) => (
-                  <div 
-                    key={i} 
-                    className="h-48 rounded-lg border border-gray-200 bg-white p-4 animate-pulse"
-                  />
-                ))}
-              </div>
-            ) : filteredAssignments.length > 0 ? (
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {filteredAssignments.map((assignment) => (
-                  <AssignmentCard 
-                    key={assignment.id} 
-                    assignment={assignment}
-                  />
-                ))}
-              </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center py-12 text-center">
-                <div className="rounded-full bg-muted p-4 mb-4">
-                  <FileText className="h-8 w-8 text-muted-foreground" />
-                </div>
-                <h3 className="text-lg font-semibold">No HBL assignments found</h3>
-                <p className="text-muted-foreground mt-1 mb-4 max-w-md">
-                  Try changing your search query or date range, or check back later for new assignments.
-                </p>
-                <Button onClick={handleRefresh}>
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  Refresh Data
-                </Button>
-              </div>
-            )}
-          </div>
+          <AssignmentList
+            isLoadingAssignments={isLoadingAssignments}
+            filteredAssignments={filteredAssignments}
+            handleRefresh={handleRefresh}
+          />
         </div>
       </main>
     </div>
