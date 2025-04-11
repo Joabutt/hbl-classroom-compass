@@ -1,13 +1,14 @@
 
-import { Button } from "@/components/ui/button";
 import { useAuth } from "@/context/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { useEffect, useRef } from "react";
+import { useToast } from "@/components/ui/use-toast";
 
 const Login = () => {
   const { user, login, isLoading } = useAuth();
   const navigate = useNavigate();
   const googleButtonRef = useRef<HTMLDivElement>(null);
+  const { toast } = useToast();
 
   useEffect(() => {
     if (user) {
@@ -16,11 +17,23 @@ const Login = () => {
   }, [user, navigate]);
 
   useEffect(() => {
-    // This initiates the Google Sign-In
+    // Only try to initialize login after a short delay
+    // to ensure Google API is loaded
     if (!user && !isLoading) {
-      login();
+      const timer = setTimeout(() => {
+        login().catch(error => {
+          console.error("Login failed:", error);
+          toast({
+            title: "Login Error",
+            description: "There was a problem signing in with Google. Please try again.",
+            variant: "destructive",
+          });
+        });
+      }, 1000);
+      
+      return () => clearTimeout(timer);
     }
-  }, [user, isLoading, login]);
+  }, [user, isLoading, login, toast]);
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-hbl-gray">
@@ -43,9 +56,20 @@ const Login = () => {
           {isLoading ? (
             <div className="w-full flex justify-center">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-hbl-blue"></div>
+              <p className="ml-3 text-sm text-gray-600">Connecting to Google...</p>
             </div>
           ) : (
-            <div id="google-signin-button" ref={googleButtonRef} className="flex justify-center"></div>
+            <>
+              <div id="google-signin-button" ref={googleButtonRef} className="flex justify-center"></div>
+              <div className="flex justify-center">
+                <button 
+                  onClick={() => login()} 
+                  className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+                >
+                  Sign in with Google
+                </button>
+              </div>
+            </>
           )}
         </div>
 
@@ -55,11 +79,12 @@ const Login = () => {
               <div className="w-full border-t border-gray-300"></div>
             </div>
             <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-white text-gray-500">Information</span>
+              <span className="px-2 bg-white text-gray-500">Important</span>
             </div>
           </div>
           <p className="mt-3 text-xs text-center text-gray-500">
             This app uses Google Sign-In to access your Google Classroom data.
+            <br/>Make sure to update the GOOGLE_CLIENT_ID in AuthContext.tsx with your own Client ID.
             <br/>Your data is only used within this application and is not stored on our servers.
           </p>
         </div>

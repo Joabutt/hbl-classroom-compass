@@ -20,8 +20,8 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Google OAuth Client ID
-const GOOGLE_CLIENT_ID = "YOUR_GOOGLE_CLIENT_ID"; // Replace with your actual Google Client ID
+// Google OAuth Client ID - REPLACE THIS WITH YOUR ACTUAL CLIENT ID
+const GOOGLE_CLIENT_ID = "YOUR_GOOGLE_CLIENT_ID";
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
@@ -36,7 +36,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         const parsedUser = JSON.parse(storedUser);
         setUser(parsedUser);
-        setAccessToken(parsedUser.accessToken || null);
+        // Make sure we're explicitly setting the access token
+        if (parsedUser.accessToken) {
+          setAccessToken(parsedUser.accessToken);
+        } else {
+          // If no token in stored user, clear the storage to force re-login
+          localStorage.removeItem('hbl-classroom-user');
+          setUser(null);
+        }
       } catch (error) {
         console.error('Failed to parse stored user:', error);
         localStorage.removeItem('hbl-classroom-user');
@@ -51,16 +58,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       script.async = true;
       script.defer = true;
       document.body.appendChild(script);
+      
+      // Add a load event listener to verify the script loaded
+      script.onload = () => {
+        console.log("Google Identity Services script loaded successfully");
+      };
+      
+      script.onerror = () => {
+        console.error("Failed to load Google Identity Services script");
+        toast({
+          title: "Failed to load Google Sign-In",
+          description: "Please check your internet connection and try again.",
+          variant: "destructive",
+        });
+      };
     };
 
     loadGoogleApi();
-  }, []);
+  }, [toast]);
 
   const login = async () => {
     setIsLoading(true);
     try {
+      console.log("Starting Google login process...");
+      
       // Initialize Google Identity Services
       if (!window.google) {
+        console.error("Google API not loaded. The google object is not available.");
         toast({
           title: "Google API not loaded",
           description: "Please try again in a few seconds.",
@@ -73,36 +97,68 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Create promise to handle the Google Sign-In flow
       const tokenPromise = new Promise<string>((resolve, reject) => {
         const handleCredentialResponse = (response: any) => {
+          console.log("Received credential response from Google");
           if (response && response.credential) {
             resolve(response.credential);
           } else {
-            reject(new Error('Google authentication failed'));
+            reject(new Error('Google authentication failed - no credential in response'));
           }
         };
 
-        // Initialize Google Sign-In
-        window.google.accounts.id.initialize({
-          client_id: GOOGLE_CLIENT_ID,
-          callback: handleCredentialResponse,
-          scope: 'email profile https://www.googleapis.com/auth/classroom.courses.readonly https://www.googleapis.com/auth/classroom.announcements.readonly https://www.googleapis.com/auth/classroom.coursework.me.readonly',
-        });
+        // These scopes are required for Google Classroom API
+        const scopes = [
+          'email', 
+          'profile', 
+          'https://www.googleapis.com/auth/classroom.courses.readonly',
+          'https://www.googleapis.com/auth/classroom.announcements.readonly',
+          'https://www.googleapis.com/auth/classroom.coursework.me.readonly'
+        ].join(' ');
 
-        // Prompt the user to sign in
-        window.google.accounts.id.prompt((notification: any) => {
-          if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-            // Try to render the Google Sign-In manually
+        // Initialize Google Sign-In
+        try {
+          window.google.accounts.id.initialize({
+            client_id: GOOGLE_CLIENT_ID,
+            callback: handleCredentialResponse,
+            scope: scopes,
+          });
+          console.log("Google Sign-In initialized with scopes:", scopes);
+
+          // Prompt the user to sign in
+          window.google.accounts.id.prompt((notification: any) => {
+            console.log("Google Sign-In prompt notification:", notification);
+            if (notification.isNotDisplayed()) {
+              console.error("Sign-In prompt not displayed, reason:", notification.getNotDisplayedReason());
+              reject(new Error(`Google Sign-In prompt not displayed: ${notification.getNotDisplayedReason()}`));
+            } else if (notification.isSkippedMoment()) {
+              console.error("Sign-In prompt skipped, reason:", notification.getSkippedReason());
+              reject(new Error(`Google Sign-In prompt skipped: ${notification.getSkippedReason()}`));
+            } else if (notification.isDismissedMoment()) {
+              console.error("Sign-In prompt dismissed, reason:", notification.getDismissedReason());
+              reject(new Error(`Google Sign-In prompt dismissed: ${notification.getDismissedReason()}`));
+            }
+          });
+          
+          // Also try to render the button manually as a fallback
+          const googleButtonDiv = document.getElementById('google-signin-button');
+          if (googleButtonDiv) {
             window.google.accounts.id.renderButton(
-              document.getElementById('google-signin-button')!, 
-              { theme: 'outline', size: 'large', width: 380 }
+              googleButtonDiv, 
+              { theme: 'outline', size: 'large', width: 380, text: 'signin_with' }
             );
-            reject(new Error('Google Sign-In prompt not displayed'));
+            console.log("Google Sign-In button rendered manually");
+          } else {
+            console.error("Google Sign-In button container not found in DOM");
           }
-        });
+        } catch (initError) {
+          console.error("Error during Google Sign-In initialization:", initError);
+          reject(initError);
+        }
       });
 
       try {
         // Wait for the token from Google Sign-In
         const token = await tokenPromise;
+        console.log("Successfully obtained Google authentication token");
         
         // Decode the JWT token to get user info
         const decodedToken = JSON.parse(atob(token.split('.')[1]));

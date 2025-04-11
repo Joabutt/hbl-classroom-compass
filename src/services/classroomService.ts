@@ -1,3 +1,4 @@
+
 import { Assignment } from "@/types/Assignment";
 
 // Get assignments and announcements with HBL in the title or description within a date range
@@ -13,15 +14,19 @@ export const getHBLAssignments = async (
   }
 
   try {
+    console.log("Attempting to fetch courses with token:", accessToken ? `${accessToken.substring(0, 10)}...` : 'none');
     // Get courses first
     const courses = await fetchCourses(accessToken);
+    console.log("Successfully fetched courses:", courses.length);
     const allAssignments: Assignment[] = [];
 
     // For each course, fetch both assignments and announcements
     for (const course of courses) {
       try {
         // Fetch coursework
+        console.log(`Fetching coursework for course ${course.id}`);
         const courseWork = await fetchCourseWork(course.id, accessToken);
+        console.log(`Got ${courseWork.length} course work items for course ${course.id}`);
         const assignments = courseWork.map(work => ({
           id: work.id,
           title: work.title,
@@ -35,7 +40,9 @@ export const getHBLAssignments = async (
         }));
 
         // Fetch announcements
+        console.log(`Fetching announcements for course ${course.id}`);
         const announcements = await fetchAnnouncements(course.id, accessToken);
+        console.log(`Got ${announcements.length} announcements for course ${course.id}`);
         const announcementItems = announcements.map(announcement => ({
           id: announcement.id,
           title: announcement.text.substring(0, 50) + (announcement.text.length > 50 ? '...' : ''),
@@ -103,18 +110,35 @@ export const getCourses = async (accessToken?: string | null): Promise<{id: stri
 // Helper function to fetch courses from Google Classroom API
 async function fetchCourses(accessToken: string) {
   try {
+    console.log("Sending request to Google Classroom API for courses");
     const response = await fetch('https://classroom.googleapis.com/v1/courses?courseStates=ACTIVE', {
       headers: {
-        'Authorization': `Bearer ${accessToken}`
+        'Authorization': `Bearer ${accessToken}`,
+        'Accept': 'application/json'
       }
     });
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
+      const errorText = await response.text();
+      let errorData;
+      try {
+        errorData = JSON.parse(errorText);
+      } catch (e) {
+        errorData = { text: errorText };
+      }
+      
+      console.error("API Error Response:", {
+        status: response.status,
+        statusText: response.statusText,
+        headers: Object.fromEntries([...response.headers]),
+        data: errorData
+      });
+      
       throw new Error(`Failed to fetch courses: ${response.status} - ${JSON.stringify(errorData)}`);
     }
 
     const data = await response.json();
+    console.log("Courses API response:", data);
     return data.courses || [];
   } catch (error) {
     console.error('Error in fetchCourses:', error);
