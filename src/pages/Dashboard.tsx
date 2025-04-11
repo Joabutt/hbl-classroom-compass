@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getHBLAssignments } from "@/services/classroomService";
@@ -13,10 +12,12 @@ import { Input } from "@/components/ui/input";
 import { Search, RefreshCw, FileText, Megaphone } from "lucide-react";
 import { addDays, subDays } from "date-fns";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useToast } from "@/components/ui/use-toast";
 
 const Dashboard = () => {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, accessToken } = useAuth();
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [filteredAssignments, setFilteredAssignments] = useState<Assignment[]>([]);
   const [isLoadingAssignments, setIsLoadingAssignments] = useState(false);
@@ -34,17 +35,22 @@ const Dashboard = () => {
     }
   }, [user, isLoading, navigate]);
 
-  // Fetch assignments when date range changes
+  // Fetch assignments when date range changes or when accessToken becomes available
   useEffect(() => {
     const fetchAssignments = async () => {
       if (dateRange?.from && dateRange?.to) {
         setIsLoadingAssignments(true);
         try {
-          const data = await getHBLAssignments(dateRange.from, dateRange.to);
+          const data = await getHBLAssignments(dateRange.from, dateRange.to, accessToken);
           setAssignments(data);
           setFilteredAssignments(data);
         } catch (error) {
           console.error("Error fetching assignments:", error);
+          toast({
+            title: "Error",
+            description: "Failed to fetch assignments. Using mock data instead.",
+            variant: "destructive",
+          });
         } finally {
           setIsLoadingAssignments(false);
         }
@@ -52,7 +58,7 @@ const Dashboard = () => {
     };
 
     fetchAssignments();
-  }, [dateRange]);
+  }, [dateRange, accessToken, toast]);
 
   // Filter assignments based on search query and active tab
   useEffect(() => {
@@ -81,11 +87,20 @@ const Dashboard = () => {
     if (dateRange?.from && dateRange?.to) {
       setIsLoadingAssignments(true);
       try {
-        const data = await getHBLAssignments(dateRange.from, dateRange.to);
+        const data = await getHBLAssignments(dateRange.from, dateRange.to, accessToken);
         setAssignments(data);
         setFilteredAssignments(data);
+        toast({
+          title: "Data refreshed",
+          description: "Your HBL assignments have been updated.",
+        });
       } catch (error) {
         console.error("Error refreshing assignments:", error);
+        toast({
+          title: "Error",
+          description: "Failed to refresh assignments.",
+          variant: "destructive",
+        });
       } finally {
         setIsLoadingAssignments(false);
       }
