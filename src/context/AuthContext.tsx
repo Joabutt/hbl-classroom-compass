@@ -7,7 +7,7 @@ interface User {
   name: string;
   email: string;
   photoUrl?: string;
-  accessToken?: string; // Added for Google Classroom API access
+  accessToken?: string;
 }
 
 interface AuthContextType {
@@ -15,13 +15,13 @@ interface AuthContextType {
   isLoading: boolean;
   login: () => Promise<void>;
   logout: () => void;
-  accessToken: string | null; // Added to expose the accessToken
+  accessToken: string | null;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 // Google OAuth Client ID
-const GOOGLE_CLIENT_ID = "YOUR_GOOGLE_CLIENT_ID"; // Replace with your Google Client ID
+const GOOGLE_CLIENT_ID = "YOUR_GOOGLE_CLIENT_ID"; // Replace with your actual Google Client ID
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
@@ -70,58 +70,67 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
-      const handleCredentialResponse = async (response: any) => {
-        try {
-          // Decode the JWT token to get user info
-          const token = response.credential;
-          const decodedToken = JSON.parse(atob(token.split('.')[1]));
-          
-          const googleUser: User = {
-            id: decodedToken.sub,
-            name: decodedToken.name,
-            email: decodedToken.email,
-            photoUrl: decodedToken.picture,
-            accessToken: token
-          };
-          
-          setUser(googleUser);
-          setAccessToken(token);
-          localStorage.setItem('hbl-classroom-user', JSON.stringify(googleUser));
-          
-          toast({
-            title: "Logged in successfully",
-            description: `Welcome, ${googleUser.name}!`,
-          });
-        } catch (error) {
-          console.error('Error processing Google response:', error);
-          toast({
-            title: "Login failed",
-            description: "Could not process Google login response.",
-            variant: "destructive",
-          });
-        } finally {
-          setIsLoading(false);
-        }
-      };
+      // Create promise to handle the Google Sign-In flow
+      const tokenPromise = new Promise<string>((resolve, reject) => {
+        const handleCredentialResponse = (response: any) => {
+          if (response && response.credential) {
+            resolve(response.credential);
+          } else {
+            reject(new Error('Google authentication failed'));
+          }
+        };
 
-      // Initialize Google Sign-In
-      window.google.accounts.id.initialize({
-        client_id: GOOGLE_CLIENT_ID,
-        callback: handleCredentialResponse,
-        scope: 'email profile https://www.googleapis.com/auth/classroom.courses.readonly https://www.googleapis.com/auth/classroom.announcements.readonly https://www.googleapis.com/auth/classroom.coursework.me.readonly',
+        // Initialize Google Sign-In
+        window.google.accounts.id.initialize({
+          client_id: GOOGLE_CLIENT_ID,
+          callback: handleCredentialResponse,
+          scope: 'email profile https://www.googleapis.com/auth/classroom.courses.readonly https://www.googleapis.com/auth/classroom.announcements.readonly https://www.googleapis.com/auth/classroom.coursework.me.readonly',
+        });
+
+        // Prompt the user to sign in
+        window.google.accounts.id.prompt((notification: any) => {
+          if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+            // Try to render the Google Sign-In manually
+            window.google.accounts.id.renderButton(
+              document.getElementById('google-signin-button')!, 
+              { theme: 'outline', size: 'large', width: 380 }
+            );
+            reject(new Error('Google Sign-In prompt not displayed'));
+          }
+        });
       });
 
-      // Render Google Sign-In button
-      window.google.accounts.id.prompt((notification: any) => {
-        if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-          // Try to render the Google Sign-In manually
-          window.google.accounts.id.renderButton(
-            document.getElementById('google-signin-button')!, 
-            { theme: 'outline', size: 'large', width: 380 }
-          );
-          setIsLoading(false);
-        }
-      });
+      try {
+        // Wait for the token from Google Sign-In
+        const token = await tokenPromise;
+        
+        // Decode the JWT token to get user info
+        const decodedToken = JSON.parse(atob(token.split('.')[1]));
+        
+        const googleUser: User = {
+          id: decodedToken.sub,
+          name: decodedToken.name,
+          email: decodedToken.email,
+          photoUrl: decodedToken.picture,
+          accessToken: token
+        };
+        
+        setUser(googleUser);
+        setAccessToken(token);
+        localStorage.setItem('hbl-classroom-user', JSON.stringify(googleUser));
+        
+        toast({
+          title: "Logged in successfully",
+          description: `Welcome, ${googleUser.name}!`,
+        });
+      } catch (error) {
+        console.error('Error processing Google response:', error);
+        toast({
+          title: "Login failed",
+          description: "Could not process Google login response.",
+          variant: "destructive",
+        });
+      }
     } catch (error) {
       console.error('Login initialization failed:', error);
       toast({
@@ -129,6 +138,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         description: "There was a problem initializing Google login.",
         variant: "destructive",
       });
+    } finally {
       setIsLoading(false);
     }
   };

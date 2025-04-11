@@ -1,4 +1,3 @@
-
 import { Assignment } from "@/types/Assignment";
 
 // Get assignments and announcements with HBL in the title or description within a date range
@@ -20,34 +19,39 @@ export const getHBLAssignments = async (
 
     // For each course, fetch both assignments and announcements
     for (const course of courses) {
-      // Fetch coursework
-      const courseWork = await fetchCourseWork(course.id, accessToken);
-      const assignments = courseWork.map(work => ({
-        id: work.id,
-        title: work.title,
-        description: work.description || '',
-        dueDate: work.dueDate ? new Date(work.dueDate.year, work.dueDate.month - 1, work.dueDate.day).toISOString() : undefined,
-        createdAt: work.creationTime,
-        courseTitle: course.name,
-        courseId: course.id,
-        type: "assignment" as const,
-        link: work.alternateLink
-      }));
+      try {
+        // Fetch coursework
+        const courseWork = await fetchCourseWork(course.id, accessToken);
+        const assignments = courseWork.map(work => ({
+          id: work.id,
+          title: work.title,
+          description: work.description || '',
+          dueDate: work.dueDate ? new Date(work.dueDate.year, work.dueDate.month - 1, work.dueDate.day).toISOString() : undefined,
+          createdAt: work.creationTime,
+          courseTitle: course.name,
+          courseId: course.id,
+          type: "assignment" as const,
+          link: work.alternateLink
+        }));
 
-      // Fetch announcements
-      const announcements = await fetchAnnouncements(course.id, accessToken);
-      const announcementItems = announcements.map(announcement => ({
-        id: announcement.id,
-        title: announcement.text.substring(0, 50) + (announcement.text.length > 50 ? '...' : ''),
-        description: announcement.text,
-        createdAt: announcement.creationTime,
-        courseTitle: course.name,
-        courseId: course.id,
-        type: "announcement" as const,
-        link: announcement.alternateLink
-      }));
+        // Fetch announcements
+        const announcements = await fetchAnnouncements(course.id, accessToken);
+        const announcementItems = announcements.map(announcement => ({
+          id: announcement.id,
+          title: announcement.text.substring(0, 50) + (announcement.text.length > 50 ? '...' : ''),
+          description: announcement.text,
+          createdAt: announcement.creationTime,
+          courseTitle: course.name,
+          courseId: course.id,
+          type: "announcement" as const,
+          link: announcement.alternateLink
+        }));
 
-      allAssignments.push(...assignments, ...announcementItems);
+        allAssignments.push(...assignments, ...announcementItems);
+      } catch (error) {
+        console.error(`Error fetching data for course ${course.id}:`, error);
+        // Continue with other courses even if one fails
+      }
     }
 
     // Filter by date range if provided
@@ -72,6 +76,7 @@ export const getHBLAssignments = async (
     return filteredAssignments;
   } catch (error) {
     console.error("Error fetching from Google Classroom API:", error);
+    // Fallback to mock data in case of errors
     return getMockHBLAssignments(startDate, endDate);
   }
 };
@@ -97,50 +102,76 @@ export const getCourses = async (accessToken?: string | null): Promise<{id: stri
 
 // Helper function to fetch courses from Google Classroom API
 async function fetchCourses(accessToken: string) {
-  const response = await fetch('https://classroom.googleapis.com/v1/courses?courseStates=ACTIVE', {
-    headers: {
-      'Authorization': `Bearer ${accessToken}`
+  try {
+    const response = await fetch('https://classroom.googleapis.com/v1/courses?courseStates=ACTIVE', {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`
+      }
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(`Failed to fetch courses: ${response.status} - ${JSON.stringify(errorData)}`);
     }
-  });
 
-  if (!response.ok) {
-    throw new Error(`Failed to fetch courses: ${response.status}`);
+    const data = await response.json();
+    return data.courses || [];
+  } catch (error) {
+    console.error('Error in fetchCourses:', error);
+    throw error;
   }
-
-  const data = await response.json();
-  return data.courses || [];
 }
 
 // Helper function to fetch coursework from Google Classroom API
 async function fetchCourseWork(courseId: string, accessToken: string) {
-  const response = await fetch(`https://classroom.googleapis.com/v1/courses/${courseId}/courseWork`, {
-    headers: {
-      'Authorization': `Bearer ${accessToken}`
+  try {
+    const response = await fetch(`https://classroom.googleapis.com/v1/courses/${courseId}/courseWork`, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`
+      }
+    });
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        // 404 for coursework might just mean there's no coursework, not an error
+        return [];
+      }
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(`Failed to fetch coursework for ${courseId}: ${response.status} - ${JSON.stringify(errorData)}`);
     }
-  });
 
-  if (!response.ok) {
-    throw new Error(`Failed to fetch coursework for ${courseId}: ${response.status}`);
+    const data = await response.json();
+    return data.courseWork || [];
+  } catch (error) {
+    console.error(`Error in fetchCourseWork for course ${courseId}:`, error);
+    throw error;
   }
-
-  const data = await response.json();
-  return data.courseWork || [];
 }
 
 // Helper function to fetch announcements from Google Classroom API
 async function fetchAnnouncements(courseId: string, accessToken: string) {
-  const response = await fetch(`https://classroom.googleapis.com/v1/courses/${courseId}/announcements`, {
-    headers: {
-      'Authorization': `Bearer ${accessToken}`
+  try {
+    const response = await fetch(`https://classroom.googleapis.com/v1/courses/${courseId}/announcements`, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`
+      }
+    });
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        // 404 for announcements might just mean there are no announcements, not an error
+        return [];
+      }
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(`Failed to fetch announcements for ${courseId}: ${response.status} - ${JSON.stringify(errorData)}`);
     }
-  });
 
-  if (!response.ok) {
-    throw new Error(`Failed to fetch announcements for ${courseId}: ${response.status}`);
+    const data = await response.json();
+    return data.announcements || [];
+  } catch (error) {
+    console.error(`Error in fetchAnnouncements for course ${courseId}:`, error);
+    throw error;
   }
-
-  const data = await response.json();
-  return data.announcements || [];
 }
 
 // Mock data functions (fallback)
